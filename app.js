@@ -12,6 +12,10 @@ const AUDIO_PREFIX        = 'audio-';
 const AUDIO_EXTENSION     = '.mp3';
 const STORAGE_KEY_INDEX   = 'familyPlayer_currentIndex';
 const STORAGE_KEY_THEME   = 'familyPlayer_theme';
+const STORAGE_KEY_SCROLLS = 'familyPlayer_scrollPositions';
+
+/* Scroll-back factor: restores to 80% of saved position so user re-reads a few lines */
+const SCROLL_RESTORE_FACTOR = 0.80;
 
 /* ── State ── */
 let currentRecordingIndex  = 0;   /* 0-based internally, displayed as 1-based */
@@ -68,13 +72,13 @@ function loadRecordingAtIndex(newIndex, shouldAutoPlay) {
       `Recording ${buildDisplayNumber(clampedIndex)}`;
 
     /* Load description body from separate file asynchronously */
+    const descriptionRegion = descriptionTitle.closest('.description-region');
     descriptionBodyText.textContent = '...';
     loadDescriptionForIndex(clampedIndex, function(descriptionText) {
       descriptionBodyText.textContent = descriptionText;
+      /* Restore saved scroll position (at 80%) after text is rendered */
+      restoreScrollPosition(clampedIndex, descriptionRegion);
     });
-
-    /* Scroll description back to top on new recording */
-    descriptionTitle.closest('.description-region').scrollTop = 0;
 
     /* Update prev/next button disabled states */
     prevButton.disabled = (clampedIndex === 0);
@@ -264,6 +268,35 @@ function restoreSavedPreferences() {
   return 0; /* Default to first recording */
 }
 
+/* ── Save scroll position for the current recording ── */
+function saveScrollPosition(zeroBasedIndex, scrollTop) {
+  try {
+    const allScrollPositions = JSON.parse(localStorage.getItem(STORAGE_KEY_SCROLLS) || '{}');
+    allScrollPositions[zeroBasedIndex] = scrollTop;
+    localStorage.setItem(STORAGE_KEY_SCROLLS, JSON.stringify(allScrollPositions));
+  } catch (storageError) {
+    console.warn('Could not save scroll position:', storageError);
+  }
+}
+
+/* ── Restore scroll position for a given recording ── */
+/* Applies SCROLL_RESTORE_FACTOR so user re-reads a few lines */
+function restoreScrollPosition(zeroBasedIndex, descriptionRegionElement) {
+  try {
+    const allScrollPositions = JSON.parse(localStorage.getItem(STORAGE_KEY_SCROLLS) || '{}');
+    const savedScrollTop = allScrollPositions[zeroBasedIndex];
+    if (savedScrollTop && savedScrollTop > 0) {
+      const restoredScrollTop = Math.floor(savedScrollTop * SCROLL_RESTORE_FACTOR);
+      descriptionRegionElement.scrollTop = restoredScrollTop;
+    } else {
+      descriptionRegionElement.scrollTop = 0;
+    }
+  } catch (storageError) {
+    console.warn('Could not restore scroll position:', storageError);
+    descriptionRegionElement.scrollTop = 0;
+  }
+}
+
 /* ── Load description for a given index via dynamic script injection ──
    Each recording has its own file: data/text/desc-0001.js etc.
    Each file calls onDescriptionLoaded("text here") when executed.
@@ -338,6 +371,12 @@ function attachEventListeners() {
 
   /* Progress bar seek */
   progressBarContainer.addEventListener('click', handleProgressBarSeek);
+
+  /* Save scroll position as user scrolls the description */
+  const descriptionRegion = document.querySelector('.description-region');
+  descriptionRegion.addEventListener('scroll', function() {
+    saveScrollPosition(currentRecordingIndex, descriptionRegion.scrollTop);
+  });
 
   /* Interaction prompt tap (mobile autoplay gate) */
   interactionPromptOverlay.addEventListener('click', handleInteractionPromptTap);
