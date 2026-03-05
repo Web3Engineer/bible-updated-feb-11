@@ -232,10 +232,10 @@ function dismissInteractionPrompt() {
 }
 
 /* ── Handle tap on interaction prompt overlay ── */
+/* Just dismisses the gate — user must press play manually */
 function handleInteractionPromptTap() {
   userHasInteracted = true;
   dismissInteractionPrompt();
-  playAudio();
 }
 
 /* ── Restore saved preferences from localStorage ── */
